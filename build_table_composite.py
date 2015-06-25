@@ -8,17 +8,18 @@ master_media = pd.DataFrame()
 user_tags = pd.DataFrame()
 access_token = '2118157933.a8e8294.5bee2cbd51fd44c0a26eef435cac82e0'
 
-#search parameters
+#make method to input search parameters
 media_count= 10
 tag_search =['yeti','lasportiva','flyfishing','trailrunning', 'ope']
 
 username = ['beccaskinner']
 
+
+#break into method that separates requests from individual column creation
 for u in username:
   r = requests.get("https://api.instagram.com/v1/users/search?q=%s&access_token=%s" % (u, access_token))
   if not r.ok:
     print ('User %s does not exist.' % u)
-    #end loop command needed, move to next u
     continue
   user_dict = r.json()
   actual_user = list(filter(lambda v: v['username'] == u, user_dict['data']))
@@ -32,8 +33,8 @@ for u in username:
     media_data['nmb_cmmts'] = media_data.comments.apply(lambda i: i['count'])
     media_data['nmb_likes'] = media_data.likes.apply(lambda i: i['count'])
     media_data['caption_text'] = media_data.caption.apply(lambda i: i['text'])
-    print (media_data['caption_text'])
     individual_data['Posts'] = len(media_data)
+    #make into apply with groupby
     individual_data['rct_comments'] = media_data.groupby(['user_id']).nmb_cmmts.sum().get_value(0)
     individual_data['avg_comments'] = media_data.groupby(['user_id']).nmb_cmmts.mean().get_value(0)    
     individual_data['rct_likes'] = media_data.groupby(['user_id']).nmb_likes.sum().get_value(0)
@@ -44,7 +45,8 @@ for u in username:
     
     #will eventually want to make this into a dict as well to store a count
     #also will want to give each tag an index to refer back to its post of origin, be able to provide vitals for that post in a separate sheet, much like cision hits
-
+    #default_dict, read up on this
+    #SETS BITCHES set around list
     user_tags = media_data.tags
     for index, tags in enumerate(user_tags):
         list_tags = user_tags.get_value(index)
@@ -57,6 +59,7 @@ for u in username:
     #should make into method search_tags (method or script?)
     #need to include medias index number for tag
     #will want to do a text search on captions for strictly brand names as well in case people don't use tags if user_tags.getvalue() < posts...
+    #python function 'in' 'cat' in 'cat in hat'   .lower and .trim
     for tag in individual_data['rct_tags']:
         for t in tag_search:
             if tag == t:
@@ -86,5 +89,6 @@ pull_out_data(master_table, 'followed_by', 'followed_by')
 pull_out_data(master_table, 'media', 'media')
 
 master_table.drop(labels=['counts','code'], axis=1, inplace=True)
-
+master_table.rename(columns={'id':'User Id'}, inplace=True)
+master_table.set_index('User Id', inplace=True)
 master_table.to_csv('master_instagram_table.csv')

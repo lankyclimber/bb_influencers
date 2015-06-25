@@ -12,11 +12,31 @@ follows_max = 10000000
 followed_by_min = 1000
 followed_by_max = 10000000
 
+#collect everyone's follows/followers
+#username to userid
+#userid return attributes
+#userid to username
+#read on sets (lists with unique values)
+
+def new_id_from_id (user_id, var_name):
+    for u in user_id:
+        raw = requests.get("https://api.instagram.com/v1/users/%s/%s/?access_token=%s" %  (u, var_name, access_token))
+        data = pd.DataFrame(raw.json()['data'])
+        #ideally this would be named var_name_id
+        ids = data['id']
+
+def new_id_from_username (username, var_name):
+    for u in username:
+        r = requests.get("https://api.instagram.com/v1/users/search?q=%s&access_token=%s" % (u, access_token))
+        user_dict = r.json()
+        actual_user = list(filter(lambda v: v['username'] == u, user_dict['data']))
+        raw = requests.get("https://api.instagram.com/v1/users/%s/%s/?access_token=%s" % (actual_user[0]['id'], var_name, access_token))
+        data = pd.DataFrame(raw.json()['data'])
+        #ideally this would be named var_name_id
+        ids = data['id']
+
 username=['beccaskinner','lankyclimber']
 for i in range(degree):
-    #for key,item in username:  username needs to be a dict with key = username and item =generation added to list
-    #then set conditional based upon variable from_gen as a starting point.  Current users will be gen 0. 
-    #feels important to track when people are added
     master = pd.DataFrame()
     for u in username:
       r = requests.get("https://api.instagram.com/v1/users/search?q=%s&access_token=%s" % (u, access_token))
@@ -35,38 +55,24 @@ for i in range(degree):
         follows_id = list(filter(lambda v: v['id'] == actual_user[0]['id'], follows_dict['data']))
         print (follows_id)
         followed_by_raw = requests.get("https://api.instagram.com/v1/users/%s/followed_by/?access_token=%s" % (actual_user[0]['id'], access_token))
-        followed_by_dict = followed_by_raw.json()['data']
+        followed_by_dict = pd.DataFrame(followed_by_raw.json()['data'])
         followed_by_id = followed_by_dict['id']
         print (followed_by_id)
 
-        def new_id_from_id (user_id, var_name):
-            for u in user_id:
-                raw = requests.get("https://api.instagram.com/v1/users/%s/%s/?access_token=%s" %  (u, var_name, access_token))
-                data = pd.DataFrame(raw.json()['data'])
-                #ideally this would be named var_name_id
-                ids = data['id']
+        master_list_id = follows_id + followed_by_id
 
-        def new_id_from_username (username, var_name):
-            for u in username:
-                r = requests.get("https://api.instagram.com/v1/users/search?q=%s&access_token=%s" % (u, access_token))
-                user_dict = r.json()
-                actual_user = list(filter(lambda v: v['username'] == u, user_dict['data']))
-                raw = requests.get("https://api.instagram.com/v1/users/%s/%s/?access_token=%s" % (actual_user[0]['id'], var_name, access_token))
-                data = pd.DataFrame(raw.json()['data'])
-                #ideally this would be named var_name_id
-                ids = data['id']
-
-        #master_table = follows_id + followed_by_id
-
-        for m in master_table:
+        #make separate method
+        for m in master_list_id:
+            #create new list, dont drop, just dont add
             r = requests.get("https://api.instagram.com/v1/users/%s/?access_token=%s" % (m, access_token))
             if not r.ok:
-                master_table.drop(m)
+                master_list_id.drop(m)
                 continue
             user = r.json()
             user_dtb = pd.DataFrame(user.json())['data']
             if user_dtb['counts']['follows'] < follows_min or user_dtb['counts']['follows'] > follows_max or user_dtb['counts']['followed_by'] < followed_by_min or user_dtb['counts']['followed_by'] > followed_by_max:
-                master_table.drop(m)
+                master_list_id.drop(m)
+                continue
             #this needs to be conditional upon m still being in master_table
             master.append(user_dtb['username'])
         # = second_degree.append(follows.json()['data']['id'] 

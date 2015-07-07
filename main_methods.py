@@ -45,12 +45,14 @@ def build_table (users, userid, media_count):
             media[u]['nmb_cmnts'] += m['comments']['count']
             media[u]['nmb_likes'] += m['likes']['count']
             media[u]['nmb_posts'] += 1
+            media[u]['caption_text'] += m['text'] + ' '
         media[u]['avg_comments'] = media[u]['nmb_cmnts'] / media[u]['nmb_posts']
-        media_data = pd.DataFrame(recent_media.json()['data'])
-        media_data['user_id'] = individual_data.id
-        media_data['nmb_cmmts'] = media_data.comments.apply(lambda i: i['count'])
-        media_data['nmb_likes'] = media_data.likes.apply(lambda i: i['count'])
-        media_data['caption_text'] = media_data.caption.apply(lambda i: i['text'])
+
+        #media_data = pd.DataFrame(recent_media.json()['data'])
+        #media_data['user_id'] = individual_data.id
+        #media_data['nmb_cmmts'] = media_data.comments.apply(lambda i: i['count'])
+        #media_data['nmb_likes'] = media_data.likes.apply(lambda i: i['count'])
+        #media_data['caption_text'] = media_data.caption.apply(lambda i: i['text'])
         individual_data['Posts'] = len(media_data)
         #make into apply with groupby
         individual_data['rct_comments'] = media_data.groupby(['user_id']).nmb_cmmts.sum().get_value(0)

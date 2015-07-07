@@ -39,9 +39,13 @@ def build_table (users, userid, media_count):
         if not request.ok:
             continue
         recent_media = json.loads(request.json)
-        for media in recent_media['data']:
-            media[u]['nmb_cmnts'] += recent_media['comments']['count']
-            media[u]['nmb_likes'] += recent_media['likes']['count']
+        for m in reversed(recent_media['data']):
+            if m['id'] == latest_id:
+                break
+            media[u]['nmb_cmnts'] += m['comments']['count']
+            media[u]['nmb_likes'] += m['likes']['count']
+            media[u]['nmb_posts'] += 1
+        media[u]['avg_comments'] = media[u]['nmb_cmnts'] / media[u]['nmb_posts']
         media_data = pd.DataFrame(recent_media.json()['data'])
         media_data['user_id'] = individual_data.id
         media_data['nmb_cmmts'] = media_data.comments.apply(lambda i: i['count'])

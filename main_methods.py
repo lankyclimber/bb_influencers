@@ -2,6 +2,7 @@ import requests
 import json
 import pandas as pd
 from sets import sets
+from collections import defaultdict
 table=pd.DataFrame.from_csv('Instagram Influencers.csv')
 username=set(table['Username'])
 
@@ -32,10 +33,15 @@ def make_data_table (username):
 
 def build_table (users, userid, media_count):
     recent_media = userid
-    
+    media = defaultdict(lambda: defaultdict(int))
     for u in userid:
-        recent_media = requests.get("https://api.instagram.com/v1/users/%s/media/recent/?access_token=%s&count=%s" % (u, access_token, media_count))
-        individual_data = pd.DataFrame(master.json())['data']
+        request = requests.get("https://api.instagram.com/v1/users/%s/media/recent/?access_token=%s&count=%s" % (u, access_token, media_count))
+        if not request.ok:
+            continue
+        recent_media = json.loads(request.json)
+        for media in recent_media['data']:
+            media[u]['nmb_cmnts'] += recent_media['comments']['count']
+            media[u]['nmb_likes'] += recent_media['likes']['count']
         media_data = pd.DataFrame(recent_media.json()['data'])
         media_data['user_id'] = individual_data.id
         media_data['nmb_cmmts'] = media_data.comments.apply(lambda i: i['count'])

@@ -1,12 +1,11 @@
 import requests
 import json
 import pandas as pd
+from sets import Set
 table=pd.DataFrame.from_csv('Instagram Influencers.csv')
 username=set(table['Username'])
 master_table = pd.DataFrame()
 access_token = '2118157933.a8e8294.5bee2cbd51fd44c0a26eef435cac82e0'
-degree = 1
-from_gen = 0
 follows_min = 50
 follows_max = 10000000
 followed_by_min = 1000
@@ -18,73 +17,54 @@ followed_by_max = 10000000
 #userid to username
 #read on sets (lists with unique values)
 
-def new_id_from_id (user_id, var_name):
+def grow_id_from_id (user_id):
+    follow_id_list = []
+    followed_by_id_list = []
     for u in user_id:
-        raw = requests.get("https://api.instagram.com/v1/users/%s/%s/?access_token=%s" %  (u, var_name, access_token))
-        data = pd.DataFrame(raw.json()['data'])
-        #ideally this would be named var_name_id
-        ids = data['id']
+        raw_follows = requests.get("https://api.instagram.com/v1/users/%s/follows/?access_token=%s" %  (u, access_token))
+        raw_followed_by = requests.get("https://api.instagram.com/v1/users/%s/followed-by/?access_token=%s" %  (u, access_token))
+        data_follows = pd.DataFrame(raw_follows.json()['data'])
+        data_followed_by = pd.DataFrame(raw_followed_by.json()['data'])   
+        for d in data_follows:     
+            follow_id_list += d['id']
+        for d in data_followed_by:
+            followed_by_id_list += d['id']
+    print (follow_id_list, ' ', followed_by_id_list)
+    master_set = set{}
+    master_set.update(follow_id_list, followed_by_id_list)
+    return master_set
 
-def new_id_from_username (username, var_name):
+def grow_id_from_username (username):
+    follow_id_list = []
+    followed_by_id_list = []
     for u in username:
         r = requests.get("https://api.instagram.com/v1/users/search?q=%s&access_token=%s" % (u, access_token))
         user_dict = r.json()
         actual_user = list(filter(lambda v: v['username'] == u, user_dict['data']))
-        raw = requests.get("https://api.instagram.com/v1/users/%s/%s/?access_token=%s" % (actual_user[0]['id'], var_name, access_token))
-        data = pd.DataFrame(raw.json()['data'])
-        #ideally this would be named var_name_id
-        ids = data['id']
+        raw_follows = requests.get("https://api.instagram.com/v1/users/%s/follows/?access_token=%s" % (actual_user[0]['id'], access_token))
+        data_follows = pd.DataFrame(raw_follows.json()['data'])
+        raw_followed_by = requests.get("https://api.instagram.com/v1/users/%s/followed-by/?access_token=%s" % (actual_user[0]['id'], access_token))
+        data_followed_by = pd.DataFrame(raw_followed_by.json()['data'])
+        for d in data_follows:     
+            follow_id_list += d['id']
+        for d in data_followed_by:
+            followed_by_id_list += d['id']
+    print (follow_id_list, ' ', followed_by_id_list)
+    master_set = set{}
+    master_set.update(follow_id_list, followed_by_id_list)
+    return master_set
 
-username=['beccaskinner','lankyclimber']
-for i in range(degree):
-    master = pd.DataFrame()
-    for u in username:
-      r = requests.get("https://api.instagram.com/v1/users/search?q=%s&access_token=%s" % (u, access_token))
-      if not r.ok:
-        print ('arvind fail')
-        continue
-      user_dict = r.json()
-      actual_user = list(filter(lambda v: v['username'] == u, user_dict['data']))
-      if len(actual_user) > 0:
-        #not sure these two lines are needed
-        user = requests.get("https://api.instagram.com/v1/users/%s/?access_token=%s" % (actual_user[0]['id'], access_token))
-        user_dtb = pd.DataFrame(user.json())['data']
+def id_filter (id_set):
+    follows_min = input('follows_min: ')
+    follows_max = input('follows_max: ')
+    followed_by_min = input('followed_by_min: ')
+    followed_by_max = input('followed_by_max: ')
+    master_set = set{}
 
-        follows_raw = requests.get("https://api.instagram.com/v1/users/%s/follows/?access_token=%s" % (actual_user[0]['id'], access_token))
-        follows_dict = follows_raw.json()
-        follows_id = list(filter(lambda v: v['id'] == actual_user[0]['id'], follows_dict['data']))
-        print (follows_id)
-        followed_by_raw = requests.get("https://api.instagram.com/v1/users/%s/followed_by/?access_token=%s" % (actual_user[0]['id'], access_token))
-        followed_by_dict = pd.DataFrame(followed_by_raw.json()['data'])
-        followed_by_id = followed_by_dict['id']
-        print (followed_by_id)
-
-        master_list_id = follows_id + followed_by_id
-
-        #make separate method
-        for m in master_list_id:
-            #create new list, dont drop, just dont add
-            r = requests.get("https://api.instagram.com/v1/users/%s/?access_token=%s" % (m, access_token))
-            if not r.ok:
-                master_list_id.drop(m)
-                continue
-            user = r.json()
-            user_dtb = pd.DataFrame(user.json())['data']
-            if user_dtb['counts']['follows'] < follows_min or user_dtb['counts']['follows'] > follows_max or user_dtb['counts']['followed_by'] < followed_by_min or user_dtb['counts']['followed_by'] > followed_by_max:
-                master_list_id.drop(m)
-                continue
-            #this needs to be conditional upon m still being in master_table
-            master.append(user_dtb['username'])
-        # = second_degree.append(follows.json()['data']['id'] 
-        #second_degree = second_degree.append(followed_by.json())['data']['id'])
-
-        #for s in second_degree:
-            #individual_data = requests.get("https://api.instagram.com/v1/users/%s/?access_token=%s" % s, access_token)
-    #username = username +  master
-
-for u in username:
-    r = requests.get("https://api.instagram.com/v1/users/search?q=%s&access_token=%s" % (u, access_token))
-    user_dict = pd.DataFrame(r.json()['data'])
-    print (user_dict['id'])
-    print (master_table)
-#master_table.to_csv('instagram_users.csv')
+    for i in id_set:
+        r = requests.get("https://api.instagram.com/v1/users/%s/?access_token=%s" % (i, access_token))
+        if r.ok:
+            user_dtb = pd.DataFrame(r.json()['data'])
+            if user_dtb['media'] > 0 && user_dtb['follows'] > follows_min && user_dtb['follows'] < follows_max && user_dtb['followed_by'] > followed_by_min && user_dtb['followed_by'] < followed_by_max:
+                master_set += i
+    return master_set

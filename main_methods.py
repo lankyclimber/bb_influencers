@@ -33,12 +33,16 @@ def make_data_table (username):
 
 def build_table (users, userid, media_count):
     recent_media = userid
+    #load table into df
+    #timestamp for each user
     media = defaultdict(lambda: defaultdict(int))
     for u in userid:
         request = requests.get("https://api.instagram.com/v1/users/%s/media/recent/?access_token=%s&count=%s" % (u, access_token, media_count))
         if not request.ok:
             continue
         recent_media = json.loads(request.json)
+        #should most recent first
+        #change logic to read previous output
         for m in reversed(recent_media['data']):
             if m['id'] == latest_id:
                 break

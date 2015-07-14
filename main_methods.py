@@ -1,93 +1,218 @@
 import requests
 import json
 import pandas as pd
-from sets import sets
 from collections import defaultdict
-table=pd.DataFrame.from_csv('Instagram Influencers.csv')
-username=set(table['Username'])
+from geopy.geocoders import Nominatim
+#table=pd.DataFrame.from_csv('Instagram Influencers.csv')
+#username=set(table['Username'])
 
-master_media = pd.DataFrame()
-user_tags = pd.DataFrame()
 access_token = '2118157933.a8e8294.5bee2cbd51fd44c0a26eef435cac82e0'
 
 #make method to input search parameters
 media_count= 10
-tag_search =Set([])
+tag_search = set(['cycling', 'rideyourbike', 'ridecolorado', 'coloradocyclist', 'coloradocycling', 'colorado', 'bikeporn', 'roadporn', 'ridetahoe', 'biketahoe'])
+caption_search = set()
+cities = ['Denver, CO', 'Boulder, CO', 'South Lake Tahoe, CA', 'Aspen, CO', 'Glenwood Springs, CO', 'Carbondale, CO', 'Truckee, CA', 'Carson City, CA', 'Reno, CA', 'Colorado Springs, CO']
+tahoe_coord = [['38.939415', '-119.977399']]
+aspen_coord = [['39.191031', '-106.818228']]
 
-username = ['beccaskinner']
+def find_coord (cities):
+    geolocator = Nominatim()
+    locations = pd.DataFrame (columns = ['Lat', 'Long', 'Place ID', 'User ID', 'Username'], index = cities)
+    for c in cities:
+        loc = geolocator.geocode(c)
+        locations.loc[c]['Lat'] = loc.latitude
+        locations.loc[c]['Long'] = loc.longitude
+    return locations
 
+#should just attach id to locations df
+def loc_id (locations):
+    for l in locations:
+        r = requests.get("https://api.instagram.com/v1/locations/search?lat=%s&lng=%s&access_token=%s&count=100&distance=5000" % (l['Lat'], l['Long'], access_token))
+        if not r.ok:
+            continue
+        loc_dict = pd.DataFrame(r.json()['data'])
+        locations.loc[l]['Place ID'] = loc_dict['id']
+    print (locations)
+    return locations
 
-#break into method that separates requests from individual column creation
-def make_data_table (username):
-    master_table = pd.DataFrame()
+def loc_media (locations):
+    for l in locations:
+        r = requests.get("https://api.instagram.com/v1/locations/%s/media/recent?access_token=%s&count=100&distance=5000" % (l['Place ID'], access_token))
+        if not r.ok:
+            continue
+        data_dict = pd.DataFrame(r.json()['data'])
+        for dd in data_dict:
+            print (dd)
+            locations.loc[l]['User Id'].append(dd['id'])
+            locations.loc[l]['Username'].append(dd['username'])
+    return locations
+
+def tag_info (tags):
+    total = pd.DataFrame(columns = ['Media Count'], index = tags)
+    for tag in tags:
+        r = requests.get("https://api.instagram.com/v1/tags/%s?access_token=%s" % (tag, access_token))
+        if not r.ok:
+            continue
+        tag_dict = r.json()['data']
+        total.loc[tag] = tag_dict['media_count']
+    return total
+
+tag_count = tag_info(tag_search)
+print (tag_count)
+
+def tag_to_username (tags):
+    tag_count = tag_info(tags)
+    username = set()
+    for i,j in tag_count.iterrows():
+        print ("I: ", i)
+        print ("J: ",  j)
+        if j['Media Count'] < 1000:
+            r = requests.get("https://api.instagram.com/v1/tags/%s/media/recent?access_token=%s" % (i, access_token))
+            if not r.ok:
+                continue
+            tag_dict = r.json()['data']
+            for t in tag_dict:
+                username.add(t['user']['username'])
+    return username
+
+username = tag_to_username(tag_search)
+print (username)
+
+def compare_usernames (loc_df, tag_users):
+    loc_user_set = set()
+    composite_user_set = set()
+    final_user_set = set()
+    for l in loc_df:
+        loc_user_set.add(loc_df.loc[l]['User ID'])
+    composite_user_set.add(loc_user_set, tag_users)
+    for user in composite_user_set:
+        if user in loc_user_set && user in tag_users:
+            final_user_set.add(user)
+    return final_user_set
+
+def username_to_userid (username):
+    userid_set = set()
+    username_set = set()
     for u in username:
       r = requests.get("https://api.instagram.com/v1/users/search?q=%s&access_token=%s" % (u, access_token))
       if not r.ok:
-        print ('User %s does not exist.' % u)
         continue
-      user_dict = r.json()
-      actual_user = list(filter(lambda v: v['username'] == u, user_dict['data']))
-      master_table.append(actual_user)
-      userid_list = master_table['id']
-      return master_table, userid_list
+      user_dict = r.json()['data']
+      userid_set.add(r.json()['data'][0]['id'])
+      username_set.add(u)
+      print (userid_set)
+    media_table = pd.DataFrame(index = userid_set)
+    media_table['Username'] = username_set
 
-def build_table (users, userid, media_count):
-    recent_media = userid
-    #load table into df
-    #timestamp for each user
-    media = defaultdict(lambda: defaultdict(int))
+    return media_table
+
+def pull_data (media_table, media_count):
+    media_table['rct_media'] = None
+    userid = media_table.index
     for u in userid:
-        request = requests.get("https://api.instagram.com/v1/users/%s/media/recent/?access_token=%s&count=%s" % (u, access_token, media_count))
-        if not request.ok:
+        r = requests.get("https://api.instagram.com/v1/users/%s/media/recent/?access_token=%s&count=%s" % (u, access_token, media_count))
+        if not r.ok:
             continue
-        recent_media = json.loads(request.json)
-        #should most recent first
-        #change logic to read previous output
-        for m in reversed(recent_media['data']):
-            if m['id'] == latest_id:
-                break
-            media[u]['nmb_cmnts'] += m['comments']['count']
-            media[u]['nmb_likes'] += m['likes']['count']
-            media[u]['nmb_posts'] += 1
-            media[u]['caption_text'] += m['text'] + ' '
-        media[u]['avg_comments'] = media[u]['nmb_cmnts'] / media[u]['nmb_posts']
+        media_table.loc[u]['rct_media'] = r.json()['data']
+    #return media_table
 
-        #media_data = pd.DataFrame(recent_media.json()['data'])
-        #media_data['user_id'] = individual_data.id
-        #media_data['nmb_cmmts'] = media_data.comments.apply(lambda i: i['count'])
-        #media_data['nmb_likes'] = media_data.likes.apply(lambda i: i['count'])
-        #media_data['caption_text'] = media_data.caption.apply(lambda i: i['text'])
-        individual_data['Posts'] = len(media_data)
-        #make into apply with groupby
-        individual_data['rct_comments'] = media_data.groupby(['user_id']).nmb_cmmts.sum().get_value(0)
-        individual_data['avg_comments'] = media_data.groupby(['user_id']).nmb_cmmts.mean().get_value(0)    
-        individual_data['rct_likes'] = media_data.groupby(['user_id']).nmb_likes.sum().get_value(0)
-        individual_data['avg_likes'] = media_data.groupby(['user_id']).nmb_likes.mean().get_value(0)
-        individual_data['rct_tags'] = Set([])
-        individual_data['BB_tag_match'] = ''
-        individual_data['BB_tag_list'] = []
+    #DO THESE NEED TO RETURN ANYTHING OR DO I JUST SET THE TABLE EQUAL TO CALLING THE METHOD
 
-    user_tags = media_data.tags
-    for index, tags in enumerate(user_tags):
-        list_tags = Set(user_tags.get_value(index))
-        for tag in list_tags:
-            individual_data['rct_tags'].append(tag)
+def count (media_table, existing_key, new_key):
+    total = None
+    for x in media_table['rct_media']:
+        total += x[existing_key]['count']
+    media_table[new_key] = total
+    #return media_table[new_key]
 
+def counts (media_table, existing_key, new_key):
+    total = None
+    for x in media_table['rct_media']:
+        total += x['counts'][existing_key]
+    media_table[new_key] = total
+    #return media_table[new_key]
 
-    #should make into method search_tags (method or script?)
-    #need to include medias index number for tag
-    #will want to do a text search on captions for strictly brand names as well in case people don't use tags if user_tags.getvalue() < posts...
-    #python function 'in' 'cat' in 'cat in hat'   .lower and .trim
-def search_tags (user, tag_search):
-    for u in user:
-        for tag in u['rct_tags']:
+def text (media_table, existing_key, new_key):
+    total = None
+    for x in media_table['rct_media']:
+        total += x[existing_key]['text'] + ' '
+    media_table[new_key] = total
+    #return media_table[new_key]
+
+def average (media_table, key_1, key_2):
+    new_key = 'Average ' + key_1 + 'per' + key_2
+    media_table[new_key] = None
+    userid = media_table.index
+    for u in userid:
+        media_table.loc[u][new_key] = media_table.loc[u][key_1]/media_table.loc[u][key_2]
+    #return media_table[new_key]
+
+def search_tags (media_table, tag_search):
+    media_table['Used Tags'] = []
+    userid = media_table.index
+    for u in userid:
+        for tag in media_table.loc[u]['rct_tags']:
             for t in tag_search:
                 if tag.lower() == t.lower():
-                    u['BB_tag_match'] = 'Yes'
-                    u['BB_tag_list'].append(tag)            
-        if u['BB_tag_match']  != 'Yes':
-            u['BB_tag_match'] = 'No'
-    return user
+                    m['BB_tag_list'].append(tag)            
+    r#eturn media_table
+
+def search_caption (media_table, caption_search):
+    media_table['Used Text'] = []
+    userid = media_table.index
+    for u in userid:
+        for text in media_table.loc[u]['caption_text']:
+            if text in caption_search
+                media_table.loc[u]['Used Text'].append(text + ' ')
+    #return media_table
+
+def organize(username):
+    media_table = username_to_userid(username)
+    pull_data (media_table, media_count)
+    #media_table['nmb_cmnts'] = media_table.rct_media.apply(lambda i: pull_out_data(media_table, 'comments', 'count', 'nmb_cmnts'))
+    count (media_table, 'comments', 'Number of Comments')
+    count (media_table, 'likes', 'Number of Likes')
+    text (media_table, 'caption', 'Caption Text')
+    counts (media_table, 'follows', 'Follows')
+    counts (media_table, 'followed_by', 'Followed By')
+    counts (media_table, 'media', 'Posts')
+    average (media_table, 'Number of Likes', 'Posts')
+    average (media_table, 'Number of Comments', 'Posts')
+    search_tags (media_table, tag_search)
+    search_caption (media_table, caption_search)
+    return media_table
+
+media_table = organize(['lankyclimber', 'beccaskinner'])
+print (media_table)
+
+
+
+#shelved methods
+def pull_out_data(media_table, existing_key, sec_key, new_key):
+    total = None
+    for x in media_table['rct_media']:
+        #not sure the correct keyword for null
+        if sec_key == null:
+            total += x[existing_key]
+        else;
+            total += x[existing_key][sec_key]
+    media_table[new_key] = total
+    return media_table[new_key]
+
+def search (media_table, search_params, name):
+#seems like the proper place for a defaultdict that defaults to 1 rather than a list, then counts everytime the word is reused
+    media_table[name] = []
+
+
+def filter_loc (media_table, locs):
+
+
+
+
+#START COMMANDS
+coordinates = find_coord(cities)
+
 #these are now in the wrong header, master_table not longer fits
     master_table[actual_user[0]['id']] = individual_data
     master_media=master_media.append(media_data, ignore_index=True)
@@ -98,14 +223,7 @@ master_table = master_table.T
 #need to reorder columns, exclude index
 # creates a new column named df_name on a dataframe named df, reaching
 # into the counts column and pulling out relevant data named var_name
-def pull_out_data(df, df_name, var_name):
-  df[df_name] = master_table.counts.apply(lambda i: i.get(var_name, 'None Listed'))
-  return df
 
-# pull out some of the hidden information
-pull_out_data(master_table, 'follows', 'follows')
-pull_out_data(master_table, 'followed_by', 'followed_by')
-pull_out_data(master_table, 'media', 'media')
 
 master_table.drop(labels=['counts','code'], axis=1, inplace=True)
 master_table.rename(columns={'id':'User Id'}, inplace=True)

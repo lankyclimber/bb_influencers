@@ -3,23 +3,22 @@ import json
 import pandas as pd
 import collections
 from collections import defaultdict
-from geopy.geocoders import Nominatim
-#from grow import grow_id_from_id, id_filter, grow_id_from_username
+from geopy.geocoders import GoogleV3
 #table=pd.DataFrame.from_csv('Instagram Influencers.csv')
 #username=set(table['Username'])
 
 access_token = '2118157933.a8e8294.5bee2cbd51fd44c0a26eef435cac82e0'
 
 #make method to input search parameters
-media_count= 1000
-tag_search = set(['cycling', 'rideyourbike', 'ridecolorado', 'coloradocyclist', 'coloradocycling', 'colorado', 'bikeporn', 'roadporn', 'ridetahoe', 'biketahoe'])
+media_count= 100
+tag_search = ['cycling', 'rideyourbike', 'ridecolorado', 'coloradocyclist', 'coloradocycling', 'colorado', 'bikeporn', 'roadporn', 'ridetahoe', 'biketahoe']
 caption_search = set()
 cities = ['Denver, CO', 'Boulder, CO', 'South Lake Tahoe, CA', 'Aspen, CO', 'Glenwood Springs, CO', 'Carbondale, CO', 'Truckee, CA', 'Colorado Springs, CO']
 tahoe_coord = [['38.939415', '-119.977399']]
 aspen_coord = [['39.191031', '-106.818228']]
 
 def retrieve_next_url (r, user_id_list, username_list):
-    if 'pagination' in r.json().keys():
+    if 'next_url' in r.json()['pagination'].keys():
         user_id_list, username_list = retrieve_data_from_dict(r, user_id_list, username_list)
         pages = r.json()['pagination']
         next_url = pages['next_url']
@@ -32,14 +31,30 @@ def retrieve_next_url (r, user_id_list, username_list):
 def retrieve_data_from_dict(r, user_id_list, username_list):
     data_dict = r.json()['data']
     for dd in data_dict:
-        print (dd)
         user_id_list.append(dd['user']['id'])
         username_list.append(dd['user']['username'])
     return user_id_list, username_list
 
+def retrieve_tagdata_from_dict(r, username, username_list):
+    data_dict = r.json()['data']
+    for dd in data_dict:
+        username.add(dd['user']['username'])
+        username_list.append(dd['user']['username'])
+    return username, username_list
+
+def retrieve_url (r, username, username_list):
+    if 'next_url' in r.json()['pagination'].keys():
+        username, username_list = retrieve_tagdata_from_dict(r, username, username_list)
+        pages = r.json()['pagination']
+        next_url = pages['next_url']
+        r = requests.get(next_url)
+        retrieve_url (r, username, username_list)
+    else:
+        username, username_list = retrieve_tagdata_from_dict(r, username, username_list)
+    return username, username_list
 
 def find_coord (cities):
-    geolocator = Nominatim()
+    geolocator = GoogleV3()
     locations = pd.DataFrame (columns = ['Lat', 'Long', 'Place ID', 'User ID', 'Username'], index = cities)
     for c in cities:
         location = geolocator.geocode(c)
@@ -89,24 +104,19 @@ def tag_info (tags):
 def tag_to_username (tags):
     tag_df = tag_info(tags)
     username = set()
-    userid = set()
     username_list = []
+
     for i,j in tag_df.iterrows():
         r = requests.get("https://api.instagram.com/v1/tags/%s/media/recent?access_token=%s&count=%s" % (i, access_token,media_count))
         if not r.ok:
             continue
-        tag_dict = r.json()['data']
-        for t in tag_dict:
-            username.add(t['user']['username'])
-            #userid.add(t['user']['id'])
-            username_list.append(t['user']['username'])
+        username, username_list = retrieve_url(r, username, username_list)
     user_dict = {}
     username_series = pd.Series(username_list)
     for u in username:
         user_dict[u] = username_series.value_counts()[u]
     username_df = pd.DataFrame(columns = ['ID', 'Tag Count'], index = username)
     for user in username:
-        #username_df.loc[user]['ID'] = userid[ind]
         username_df.loc[user]['Tag Count'] = user_dict[user]
     return username_df
 
@@ -122,10 +132,6 @@ def compare_usernames (loc_df, tag_df):
     user_set = loc_user_set.intersection(tag_user_set)
     return user_set
 
-locations = build_loc_table(cities)
-tag_df = tag_to_username(tag_search)
-print (compare_usernames(locations, tag_df))
-
 #unordered set
 def username_to_userid (username):
     userid_set = set()
@@ -136,7 +142,6 @@ def username_to_userid (username):
       user_dict = r.json()['data']
       userid_set.add(r.json()['data'][0]['id'])
       username_set.add(u)
-      print (userid_set)
     media_table = pd.DataFrame(index = userid_set)
     return media_table
 
@@ -247,8 +252,7 @@ def filter_loc (media_table, locs):
 #START COMMANDS
 locations = build_loc_table(cities)
 tag_df = tag_to_username(tag_search)
-#locations = grow_id_from_id(locations['User ID'])
-#tag_df = grow_id_from_id(tag_df['ID'])
+print (tag_df)
 media_table = organize(compare_usernames(locations, tag_df))
 print (media_table)
-media_table.to_csv('instagram_media_table.csv')
+#media_table.to_csv('instagram_media_table.csv')
